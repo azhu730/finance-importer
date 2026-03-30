@@ -1,17 +1,154 @@
 const XLSX = require('xlsx');
 
-function detectSource(headers, filename) {
-  const h = headers.map(x => (x || '').toLowerCase().trim());
-  const f = (filename || '').toLowerCase();
-  if (f.includes('amex') || h.some(x => x.includes('card member'))) return 'AMEX';
-  if (f.includes('venmo') || (h.includes('to') && h.includes('from') && h.includes('note'))) return 'Venmo';
-  if (f.includes('discover') || h.some(x => x.includes('trans. date') || x.includes('trans date'))) return 'Discover';
-  if (f.includes('wells') || f.includes('wf')) return 'Wells Fargo';
-  if (h.includes('amount') && h.length <= 5) return 'Wells Fargo';
-  return 'Unknown';
+// Column requirements per source
+const SOURCE_CONFIGS = {
+  AMEX: {
+    requiredColumns: ['Date', 'Description', 'Amount', 'Category'],
+    columnMap: { Date: 'date', Description: 'transaction', Amount: 'amount', Category: 'upstream_category' }
+  },
+  Venmo: {
+    requiredColumns: ['Datetime', 'Note', 'Amount (total)', 'Type', 'Status'],
+    columnMap: { Datetime: 'date', Note: 'transaction', 'Amount (total)': 'amount', Type: 'upstream_category', Status: 'status' }
+  },
+  Discover: {
+    requiredColumns: ['Trans. Date', 'Description', 'Amount', 'Category'],
+    columnMap: { 'Trans. Date': 'date', Description: 'transaction', Amount: 'amount', Category: 'upstream_category' }
+  },
+  'Wells Fargo': {
+    requiredColumns: null, // Positional; validated differently
+    positionalMap: { 0: 'date', 1: 'amount', 4: 'transaction' }
+  }
+};
+
+function findColumnCaseInsensitive(headers, targetColumn) {
+  return headers.find(h => (h || '').toLowerCase().trim() === targetColumn.toLowerCase().trim());
+}
+
+function parseAMEX(rows, headers) {
+  const config = SOURCE_CONFIGS.AMEX;
+  const colMap = {};
+  
+  // Validate required columns exist (case-insensitive)
+  for (const reqCol of config.requiredColumns) {
+    const found = findColumnCaseInsensitive(headers, reqCol);
+    if (!found) throw new Error(`AMEX format requires column "${reqCol}" but it was not found. Found columns: ${headers.join(', ')}`);
+    colMap[reqCol] = found;
+  }
+
+  return rows.map(row => {
+    const date = (row[colMap.Date] || '').trim();
+    const transaction = (row[colMap.Description] || '').trim();
+    const amount = Math.abs(parseFloat((row[colMap.Amount] || '0').toString().replace(/[$,\s]/g, '')) || 0);
+    const upstream_category = (row[colMap.Category] || '').trim();
+
+    if (!date && !transaction) return null;
+    return {
+      id: generateId(),
+      date,
+      transaction,
+      amount,
+      payment: 'AMEX',
+      upstream_category,
+      category: '',
+      sub_category: '',
+    };
+  }).filter(Boolean);
+}
+
+function parseVenmo(rows, headers) {
+  const config = SOURCE_CONFIGS.Venmo;
+  const colMap = {};
+  
+  for (const reqCol of config.requiredColumns) {
+    const found = findColumnCaseInsensitive(headers, reqCol);
+    if (!found) throw new Error(`Venmo format requires column "${reqCol}" but it was not found. Found columns: ${headers.join(', ')}`);
+    colMap[reqCol] = found;
+  }
+
+  return rows.map(row => {
+    const status = (row[colMap.Status] || '').toLowerCase().trim();
+    // Skip incomplete transactions
+    if (status && status !== 'complete') return null;
+
+    const datetime = row[colMap.Datetime] || '';
+    const date = datetime.split(' ')[0];
+    const transaction = (row[colMap.Note] || '').trim();
+    const upstream_category = (row[colMap.Type] || '').toLowerCase().trim();
+    const rawAmt = (row[colMap['Amount (total)']] || row[colMap.Amount] || '0').toString().replace(/[$,+\s]/g, '');
+    const amount = Math.abs(parseFloat(rawAmt) || 0);
+
+    if (!date && !transaction) return null;
+    return {
+      id: generateId(),
+      date: date.trim(),
+      transaction,
+      amount,
+      payment: 'Venmo',
+      upstream_category,
+      category: '',
+      sub_category: '',
+    };
+  }).filter(Boolean);
+}
+
+function parseDiscover(rows, headers) {
+  const config = SOURCE_CONFIGS.Discover;
+  const colMap = {};
+  
+  for (const reqCol of config.requiredColumns) {
+    const found = findColumnCaseInsensitive(headers, reqCol);
+    if (!found) throw new Error(`Discover format requires column "${reqCol}" but it was not found. Found columns: ${headers.join(', ')}`);
+    colMap[reqCol] = found;
+  }
+
+  return rows.map(row => {
+    const date = (row[colMap['Trans. Date']] || '').trim();
+    const transaction = (row[colMap.Description] || '').trim();
+    const upstream_category = (row[colMap.Category] || '').trim();
+    const amount = Math.abs(parseFloat((row[colMap.Amount] || '0').toString().replace(/[$,]/g, '')) || 0);
+
+    if (!date && !transaction) return null;
+    return {
+      id: generateId(),
+      date,
+      transaction,
+      amount,
+      payment: 'Discover',
+      upstream_category,
+      category: '',
+      sub_category: '',
+    };
+  }).filter(Boolean);
+}
+
+function parseWellsFargo(rows, headers) {
+  // Wells Fargo is positional; expect at least 5 columns
+  if (headers.length < 5) {
+    throw new Error(`Wells Fargo format expects at least 5 columns (Date, Amount, Description, ..., Description), but got ${headers.length}: ${headers.join(', ')}`);
+  }
+
+  return rows.map(row => {
+    const keys = headers;
+    const date = (row[keys[0]] || row.Date || '').trim();
+    const amount = Math.abs(parseFloat((row[keys[1]] || row.Amount || '0').toString().replace(/[$,]/g, '')) || 0);
+    const transaction = (row[keys[4]] || row[keys[2]] || row.Description || '').trim();
+
+    if (!date && !transaction) return null;
+    return {
+      id: generateId(),
+      date,
+      transaction,
+      amount,
+      payment: 'Wells Fargo',
+      upstream_category: '',
+      category: '',
+      sub_category: '',
+    };
+  }).filter(Boolean);
 }
 
 function normalizeRow(raw, source) {
+  // This function is deprecated; use source-specific parsers instead
   const keys = Object.keys(raw);
   let date = '', description = '', amount = 0, upstreamCategory = '';
 
@@ -73,7 +210,12 @@ function normalizeRow(raw, source) {
   };
 }
 
-function parseCSV(buffer, filename) {
+function parseCSV(buffer, filename, userSource) {
+  if (!userSource) throw new Error('Source is required (AMEX, Venmo, Discover, or Wells Fargo)');
+  if (!SOURCE_CONFIGS[userSource]) {
+    throw new Error(`Unknown source "${userSource}". Valid sources: AMEX, Venmo, Discover, Wells Fargo`);
+  }
+
   const isExcel = filename.toLowerCase().endsWith('.xlsx') || filename.toLowerCase().endsWith('.xls');
   let data;
 
@@ -85,9 +227,9 @@ function parseCSV(buffer, filename) {
     const text  = buffer.toString('utf8');
     const lines = text.split('\n');
 
-    // Skip Venmo / bank preamble rows before actual headers
+    // Skip preamble rows before actual headers
     let startLine = 0;
-    for (let i = 0; i < Math.min(lines.length, 10); i++) {
+    for (let i = 0; i < lines.length; i++) {
       const l = lines[i].toLowerCase();
       if (l.includes('date') || l.includes('amount') || l.includes('description') || l.includes('username')) {
         startLine = i;
@@ -104,14 +246,36 @@ function parseCSV(buffer, filename) {
   if (!data.length) throw new Error('No data rows found in file');
 
   const headers = Object.keys(data[0]);
-  const source  = detectSource(headers, filename);
-  const rows    = data.map(r => normalizeRow(r, source)).filter(Boolean);
+  let rows;
 
-  return { rows, source };
+  try {
+    switch (userSource) {
+      case 'AMEX':
+        rows = parseAMEX(data, headers);
+        break;
+      case 'Venmo':
+        rows = parseVenmo(data, headers);
+        break;
+      case 'Discover':
+        rows = parseDiscover(data, headers);
+        break;
+      case 'Wells Fargo':
+        rows = parseWellsFargo(data, headers);
+        break;
+      default:
+        throw new Error(`Unsupported source: ${userSource}`);
+    }
+  } catch (e) {
+    throw new Error(`Failed to parse ${userSource} format: ${e.message}`);
+  }
+
+  if (!rows.length) throw new Error(`No valid transactions found for ${userSource} format`);
+
+  return { rows, source: userSource };
 }
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-module.exports = { parseCSV, detectSource };
+module.exports = { parseCSV };

@@ -32,7 +32,9 @@ router.get('/', (req, res) => {
 // POST /api/transactions/upload
 router.post('/upload', upload.single('file'), (req, res) => {
   try {
-    const { rows, source } = parseCSV(req.file.buffer, req.file.originalname);
+    const userSource = req.body.source;
+    if (!userSource) return res.status(400).json({ error: 'Source is required' });
+    const { rows, source } = parseCSV(req.file.buffer, req.file.originalname, userSource);
 
     // Apply saved mappings
     const mappings = {};

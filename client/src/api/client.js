@@ -33,9 +33,10 @@ export const getTransactions = (params = {}) => {
   return request(`/transactions?${qs}`);
 };
 
-export const uploadCSV = (file) => {
+export const uploadCSV = (file, source = 'AMEX') => {
   const fd = new FormData();
   fd.append('file', file);
+  fd.append('source', source);
   return request('/transactions/upload', { method: 'POST', body: fd });
 };
 

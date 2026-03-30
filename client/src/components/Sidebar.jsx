@@ -55,12 +55,15 @@ const useStyles = makeStyles({
   },
 });
 
+const SOURCE_OPTIONS = ['AMEX', 'Venmo', 'Discover', 'Wells Fargo'];
+
 export default function Sidebar({ stats, onUploaded }) {
   const s = useStyles();
   const inputRef = useRef(null);
   const [dragOver, setDragOver]     = useState(false);
   const [uploading, setUploading]   = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [selectedSource, setSelectedSource] = useState('AMEX');
   const { names: catNames, groups } = useCategories();
 
   async function handleFiles(files) {
@@ -69,7 +72,7 @@ export default function Sidebar({ stats, onUploaded }) {
     for (const file of Array.from(files)) {
       if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) continue;
       try {
-        const res = await uploadCSV(file);
+        const res = await uploadCSV(file, selectedSource);
         results.push({ name: file.name, source: res.source, count: res.inserted });
       } catch (e) {
         alert(`Error uploading ${file.name}: ${e.message}`);
@@ -107,6 +110,20 @@ export default function Sidebar({ stats, onUploaded }) {
       {/* Upload */}
       <div className={s.section}>
         <Text className={s.sectionLabel}>Upload CSVs & Excel</Text>
+        <select
+          value={selectedSource}
+          onChange={e => setSelectedSource(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '8px',
+            marginBottom: '10px',
+            borderRadius: '4px',
+            border: `1px solid ${tokens.colorNeutralStroke2}`,
+            fontSize: tokens.fontSizeBase200,
+          }}
+        >
+          {SOURCE_OPTIONS.map(src => <option key={src} value={src}>{src}</option>)}
+        </select>
         <div
           className={`${s.dropZone} ${dragOver ? s.dropZoneActive : ''}`}
           onClick={() => inputRef.current?.click()}
@@ -114,7 +131,7 @@ export default function Sidebar({ stats, onUploaded }) {
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
         >
-          <input ref={inputRef} type="file" accept=".csv,.xlsx" multiple style={{ display: 'none' }}
+          <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls" multiple style={{ display: 'none' }}
             onChange={e => handleFiles(e.target.files)} />
           {uploading
             ? <Spinner size="small" label="Uploading…" />
