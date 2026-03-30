@@ -74,25 +74,34 @@ function normalizeRow(raw, source) {
 }
 
 function parseCSV(buffer, filename) {
-  const text  = buffer.toString('utf8');
-  const lines = text.split('\n');
+  const isExcel = filename.toLowerCase().endsWith('.xlsx') || filename.toLowerCase().endsWith('.xls');
+  let data;
 
-  // Skip Venmo / bank preamble rows before actual headers
-  let startLine = 0;
-  for (let i = 0; i < Math.min(lines.length, 10); i++) {
-    const l = lines[i].toLowerCase();
-    if (l.includes('date') || l.includes('amount') || l.includes('description') || l.includes('username')) {
-      startLine = i;
-      break;
+  if (isExcel) {
+    const wb = XLSX.read(buffer, { type: 'buffer' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  } else {
+    const text  = buffer.toString('utf8');
+    const lines = text.split('\n');
+
+    // Skip Venmo / bank preamble rows before actual headers
+    let startLine = 0;
+    for (let i = 0; i < Math.min(lines.length, 10); i++) {
+      const l = lines[i].toLowerCase();
+      if (l.includes('date') || l.includes('amount') || l.includes('description') || l.includes('username')) {
+        startLine = i;
+        break;
+      }
     }
+
+    const trimmed = lines.slice(startLine).join('\n');
+    const wb      = XLSX.read(trimmed, { type: 'string', raw: false });
+    const ws      = wb.Sheets[wb.SheetNames[0]];
+    data = XLSX.utils.sheet_to_json(ws, { defval: '' });
   }
 
-  const trimmed = lines.slice(startLine).join('\n');
-  const wb      = XLSX.read(trimmed, { type: 'string', raw: false });
-  const ws      = wb.Sheets[wb.SheetNames[0]];
-  const data    = XLSX.utils.sheet_to_json(ws, { defval: '' });
-
-  if (!data.length) throw new Error('No data rows found in CSV');
+  if (!data.length) throw new Error('No data rows found in file');
 
   const headers = Object.keys(data[0]);
   const source  = detectSource(headers, filename);

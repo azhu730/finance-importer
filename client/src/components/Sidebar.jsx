@@ -67,7 +67,7 @@ export default function Sidebar({ stats, onUploaded }) {
     setUploading(true);
     const results = [];
     for (const file of Array.from(files)) {
-      if (!file.name.endsWith('.csv')) continue;
+      if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) continue;
       try {
         const res = await uploadCSV(file);
         results.push({ name: file.name, source: res.source, count: res.inserted });
@@ -106,7 +106,7 @@ export default function Sidebar({ stats, onUploaded }) {
 
       {/* Upload */}
       <div className={s.section}>
-        <Text className={s.sectionLabel}>Upload CSVs</Text>
+        <Text className={s.sectionLabel}>Upload CSVs & Excel</Text>
         <div
           className={`${s.dropZone} ${dragOver ? s.dropZoneActive : ''}`}
           onClick={() => inputRef.current?.click()}
@@ -114,14 +114,15 @@ export default function Sidebar({ stats, onUploaded }) {
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
         >
-          <input ref={inputRef} type="file" accept=".csv" multiple style={{ display: 'none' }}
+          <input ref={inputRef} type="file" accept=".csv,.xlsx" multiple style={{ display: 'none' }}
             onChange={e => handleFiles(e.target.files)} />
           {uploading
             ? <Spinner size="small" label="Uploading…" />
             : <>
                 <span className={s.dzIcon}>📂</span>
-                <Text className={s.dzText}><strong>Browse</strong> or drag & drop</Text>
-                <Text className={s.dzHint}>AMEX · Venmo · Wells Fargo · Discover</Text>
+                <Text className={s.dzText}><strong>Browse</strong> or <strong>Drag & Drop</strong></Text>
+                <br />
+                <Text className={s.dzHint}>AMEX · Venmo · Wells Fargo · Discover · Excel</Text>
               </>
           }
         </div>
@@ -152,7 +153,7 @@ export default function Sidebar({ stats, onUploaded }) {
       {/* Category reference */}
       <div className={s.section} style={{ flex: 1 }}>
         <Text className={s.sectionLabel}>Categories</Text>
-        <div style={{ maxHeight: '260px', overflowY: 'auto' }}>
+        <div style={{ maxHeight: '260px', overflowY: 'auto', paddingRight: '16px', marginRight: '-16px' }}>
           {catNames.map(cat => (
             <div key={cat} className={s.catItem}>
               <Text size={200} weight="semibold">{cat}</Text>
