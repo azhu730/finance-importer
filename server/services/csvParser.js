@@ -1,21 +1,22 @@
 const XLSX = require('xlsx');
 
 // Column requirements per source
+// Keys: actual column names in CSV (case-insensitive match)
+// Values: normalized field names for processing
+// Extra columns in CSV are ignored automatically
 const SOURCE_CONFIGS = {
   AMEX: {
-    requiredColumns: ['Date', 'Description', 'Amount', 'Category'],
-    columnMap: { Date: 'date', Description: 'transaction', Amount: 'amount', Category: 'upstream_category' }
+    columnMap: { 'Date': 'date', 'Description': 'transaction', 'Amount': 'amount', 'Category': 'upstream_category' }
+    // Ignores: Post Date (and any other columns)
   },
   Venmo: {
-    requiredColumns: ['Datetime', 'Note', 'Amount (total)', 'Type', 'Status'],
-    columnMap: { Datetime: 'date', Note: 'transaction', 'Amount (total)': 'amount', Type: 'upstream_category', Status: 'status' }
+    columnMap: { 'Datetime': 'date', 'Note': 'transaction', 'Amount (total)': 'amount' }
   },
   Discover: {
-    requiredColumns: ['Trans. Date', 'Description', 'Amount', 'Category'],
-    columnMap: { 'Trans. Date': 'date', Description: 'transaction', Amount: 'amount', Category: 'upstream_category' }
+    columnMap: { 'Trans. Date': 'date', 'Description': 'transaction', 'Amount': 'amount', 'Category': 'upstream_category' }
   },
   'Wells Fargo': {
-    requiredColumns: null, // Positional; validated differently
+    positional: true, // Uses column positions instead of names
     positionalMap: { 0: 'date', 1: 'amount', 4: 'transaction' }
   }
 };
@@ -28,18 +29,18 @@ function parseAMEX(rows, headers) {
   const config = SOURCE_CONFIGS.AMEX;
   const colMap = {};
   
-  // Validate required columns exist (case-insensitive)
-  for (const reqCol of config.requiredColumns) {
-    const found = findColumnCaseInsensitive(headers, reqCol);
-    if (!found) throw new Error(`AMEX format requires column "${reqCol}" but it was not found. Found columns: ${headers.join(', ')}`);
-    colMap[reqCol] = found;
+  // Find each required column (case-insensitive)
+  for (const [csvCol, fieldName] of Object.entries(config.columnMap)) {
+    const found = findColumnCaseInsensitive(headers, csvCol);
+    if (!found) throw new Error(`AMEX format requires column "${csvCol}" but it was not found. Found columns: ${headers.join(', ')}`);
+    colMap[fieldName] = found;  // Maps fieldName -> actual column name in CSV
   }
 
   return rows.map(row => {
-    const date = (row[colMap.Date] || '').trim();
-    const transaction = (row[colMap.Description] || '').trim();
-    const amount = Math.abs(parseFloat((row[colMap.Amount] || '0').toString().replace(/[$,\s]/g, '')) || 0);
-    const upstream_category = (row[colMap.Category] || '').trim();
+    const date = (row[colMap.date] || '').trim();
+    const transaction = (row[colMap.transaction] || '').trim();
+    const amount = Math.abs(parseFloat((row[colMap.amount] || '0').toString().replace(/[$,\s]/g, '')) || 0);
+    const upstream_category = (row[colMap.upstream_category] || '').trim();
 
     if (!date && !transaction) return null;
     return {
@@ -59,22 +60,17 @@ function parseVenmo(rows, headers) {
   const config = SOURCE_CONFIGS.Venmo;
   const colMap = {};
   
-  for (const reqCol of config.requiredColumns) {
-    const found = findColumnCaseInsensitive(headers, reqCol);
-    if (!found) throw new Error(`Venmo format requires column "${reqCol}" but it was not found. Found columns: ${headers.join(', ')}`);
-    colMap[reqCol] = found;
+  for (const [csvCol, fieldName] of Object.entries(config.columnMap)) {
+    const found = findColumnCaseInsensitive(headers, csvCol);
+    if (!found) throw new Error(`Venmo format requires column "${csvCol}" but it was not found. Found columns: ${headers.join(', ')}`);
+    colMap[fieldName] = found;
   }
 
   return rows.map(row => {
-    const status = (row[colMap.Status] || '').toLowerCase().trim();
-    // Skip incomplete transactions
-    if (status && status !== 'complete') return null;
-
-    const datetime = row[colMap.Datetime] || '';
+    const datetime = row[colMap.date] || '';
     const date = datetime.split(' ')[0];
-    const transaction = (row[colMap.Note] || '').trim();
-    const upstream_category = (row[colMap.Type] || '').toLowerCase().trim();
-    const rawAmt = (row[colMap['Amount (total)']] || row[colMap.Amount] || '0').toString().replace(/[$,+\s]/g, '');
+    const transaction = (row[colMap.transaction] || '').trim();
+    const rawAmt = (row[colMap.amount] || '0').toString().replace(/[$,+\s]/g, '');
     const amount = Math.abs(parseFloat(rawAmt) || 0);
 
     if (!date && !transaction) return null;
@@ -84,7 +80,7 @@ function parseVenmo(rows, headers) {
       transaction,
       amount,
       payment: 'Venmo',
-      upstream_category,
+      upstream_category: '',  // Always blank for Venmo
       category: '',
       sub_category: '',
     };
@@ -95,17 +91,17 @@ function parseDiscover(rows, headers) {
   const config = SOURCE_CONFIGS.Discover;
   const colMap = {};
   
-  for (const reqCol of config.requiredColumns) {
-    const found = findColumnCaseInsensitive(headers, reqCol);
-    if (!found) throw new Error(`Discover format requires column "${reqCol}" but it was not found. Found columns: ${headers.join(', ')}`);
-    colMap[reqCol] = found;
+  for (const [csvCol, fieldName] of Object.entries(config.columnMap)) {
+    const found = findColumnCaseInsensitive(headers, csvCol);
+    if (!found) throw new Error(`Discover format requires column "${csvCol}" but it was not found. Found columns: ${headers.join(', ')}`);
+    colMap[fieldName] = found;
   }
 
   return rows.map(row => {
-    const date = (row[colMap['Trans. Date']] || '').trim();
-    const transaction = (row[colMap.Description] || '').trim();
-    const upstream_category = (row[colMap.Category] || '').trim();
-    const amount = Math.abs(parseFloat((row[colMap.Amount] || '0').toString().replace(/[$,]/g, '')) || 0);
+    const date = (row[colMap.date] || '').trim();
+    const transaction = (row[colMap.transaction] || '').trim();
+    const upstream_category = (row[colMap.upstream_category] || '').trim();
+    const amount = Math.abs(parseFloat((row[colMap.amount] || '0').toString().replace(/[$,]/g, '')) || 0);
 
     if (!date && !transaction) return null;
     return {
@@ -122,16 +118,18 @@ function parseDiscover(rows, headers) {
 }
 
 function parseWellsFargo(rows, headers) {
+  const config = SOURCE_CONFIGS['Wells Fargo'];
   // Wells Fargo is positional; expect at least 5 columns
   if (headers.length < 5) {
     throw new Error(`Wells Fargo format expects at least 5 columns (Date, Amount, Description, ..., Description), but got ${headers.length}: ${headers.join(', ')}`);
   }
 
   return rows.map(row => {
-    const keys = headers;
-    const date = (row[keys[0]] || row.Date || '').trim();
-    const amount = Math.abs(parseFloat((row[keys[1]] || row.Amount || '0').toString().replace(/[$,]/g, '')) || 0);
-    const transaction = (row[keys[4]] || row[keys[2]] || row.Description || '').trim();
+    // Use column positions: 0=date, 1=amount, 4=transaction
+    // Ignores columns at positions 2, 3, and any beyond 4
+    const date = (row[headers[0]] || row.Date || '').trim();
+    const amount = Math.abs(parseFloat((row[headers[1]] || row.Amount || '0').toString().replace(/[$,]/g, '')) || 0);
+    const transaction = (row[headers[4]] || row[headers[2]] || row.Description || '').trim();
 
     if (!date && !transaction) return null;
     return {
@@ -217,31 +215,40 @@ function parseCSV(buffer, filename, userSource) {
   }
 
   const isExcel = filename.toLowerCase().endsWith('.xlsx') || filename.toLowerCase().endsWith('.xls');
-  let data;
 
+  // Step 1: Read file into a workbook and worksheet
+  let wb, ws;
   if (isExcel) {
-    const wb = XLSX.read(buffer, { type: 'buffer' });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    wb = XLSX.read(buffer, { type: 'buffer' });
   } else {
-    const text  = buffer.toString('utf8');
-    const lines = text.split('\n');
-
-    // Skip preamble rows before actual headers
-    let startLine = 0;
-    for (let i = 0; i < lines.length; i++) {
-      const l = lines[i].toLowerCase();
-      if (l.includes('date') || l.includes('amount') || l.includes('description') || l.includes('username')) {
-        startLine = i;
-        break;
-      }
-    }
-
-    const trimmed = lines.slice(startLine).join('\n');
-    const wb      = XLSX.read(trimmed, { type: 'string', raw: false });
-    const ws      = wb.Sheets[wb.SheetNames[0]];
-    data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    const text = buffer.toString('utf8');
+    wb = XLSX.read(text, { type: 'string', raw: false });
   }
+  ws = wb.Sheets[wb.SheetNames[0]];
+
+  // Step 2: Get all rows as raw arrays for header detection
+  const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+  // Step 3: Find the header row using source-specific column names
+  const config = SOURCE_CONFIGS[userSource];
+  const searchTerms = config.positional
+    ? [] // Positional sources (Wells Fargo) have no named headers
+    : Object.keys(config.columnMap).map(col => col.toLowerCase());
+
+  let headerRow = 0;
+  for (let i = 0; i < rawRows.length; i++) {
+    const line = rawRows[i].map(v => (v || '').toString().toLowerCase()).join(',');
+    if (searchTerms.length === 0) {
+      if (line.trim()) { headerRow = i; break; }
+    } else if (searchTerms.every(term => line.includes(term))) {
+      headerRow = i;
+      break;
+    }
+  }
+  // console.log(`Header row found at row ${headerRow + 1}`);
+
+  // Step 4: Re-parse from the header row so headers become object keys
+  const data = XLSX.utils.sheet_to_json(ws, { defval: '', range: headerRow });
 
   if (!data.length) throw new Error('No data rows found in file');
 

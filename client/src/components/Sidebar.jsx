@@ -41,6 +41,11 @@ const useStyles = makeStyles({
     borderColor: tokens.colorBrandStroke1,
     backgroundColor: tokens.colorBrandBackground2,
   },
+  dropZoneDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
+    pointerEvents: 'none',
+  },
   dzIcon: { fontSize: '24px', display: 'block', marginBottom: '6px' },
   dzText: { fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3 },
   dzHint: { fontSize: tokens.fontSizeBase100, color: tokens.colorNeutralForeground4, marginTop: '4px' },
@@ -63,8 +68,9 @@ export default function Sidebar({ stats, onUploaded }) {
   const [dragOver, setDragOver]     = useState(false);
   const [uploading, setUploading]   = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
-  const [selectedSource, setSelectedSource] = useState('AMEX');
+  const [selectedSource, setSelectedSource] = useState('');
   const { names: catNames, groups } = useCategories();
+  const isSourceSelected = selectedSource && selectedSource !== '';
 
   async function handleFiles(files) {
     setUploading(true);
@@ -109,7 +115,7 @@ export default function Sidebar({ stats, onUploaded }) {
 
       {/* Upload */}
       <div className={s.section}>
-        <Text className={s.sectionLabel}>Upload CSVs & Excel</Text>
+        <Text className={s.sectionLabel}>Upload Source Files</Text>
         <select
           value={selectedSource}
           onChange={e => setSelectedSource(e.target.value)}
@@ -122,24 +128,27 @@ export default function Sidebar({ stats, onUploaded }) {
             fontSize: tokens.fontSizeBase200,
           }}
         >
+          <option value="" disabled>Select a Source</option>
           {SOURCE_OPTIONS.map(src => <option key={src} value={src}>{src}</option>)}
         </select>
         <div
-          className={`${s.dropZone} ${dragOver ? s.dropZoneActive : ''}`}
-          onClick={() => inputRef.current?.click()}
-          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          className={`${s.dropZone} ${dragOver && isSourceSelected ? s.dropZoneActive : ''} ${!isSourceSelected ? s.dropZoneDisabled : ''}`}
+          onClick={() => isSourceSelected && inputRef.current?.click()}
+          onDragOver={e => { if (isSourceSelected) { e.preventDefault(); setDragOver(true); } }}
           onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
+          onDrop={e => isSourceSelected && onDrop(e)}
         >
-          <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls" multiple style={{ display: 'none' }}
+          <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls" multiple disabled={!isSourceSelected} style={{ display: 'none' }}
             onChange={e => handleFiles(e.target.files)} />
           {uploading
             ? <Spinner size="small" label="Uploading…" />
             : <>
                 <span className={s.dzIcon}>📂</span>
-                <Text className={s.dzText}><strong>Browse</strong> or <strong>Drag & Drop</strong></Text>
-                <br />
-                <Text className={s.dzHint}>AMEX · Venmo · Wells Fargo · Discover · Excel</Text>
+                <Text className={s.dzText}>{isSourceSelected ? <><strong>Browse</strong> or <strong>Drag & Drop</strong></> : 'Select a source first'}</Text>
+                {isSourceSelected && <>
+                  <br />
+                  <Text className={s.dzHint}>AMEX · Venmo · Wells Fargo · Discover</Text>
+                </>}
               </>
           }
         </div>
