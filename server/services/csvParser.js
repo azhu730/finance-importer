@@ -25,6 +25,23 @@ function findColumnCaseInsensitive(headers, targetColumn) {
   return headers.find(h => (h || '').toLowerCase().trim() === targetColumn.toLowerCase().trim());
 }
 
+function excelDateToString(value) {
+  if (typeof value === 'number') {
+    const date = new Date(Math.round((value - 25569) * 86400 * 1000));
+    const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(date.getUTCDate()).padStart(2, '0');
+    const y = date.getUTCFullYear();
+    return `${m}/${d}/${y}`;
+  }
+  if (value instanceof Date) {
+    const m = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(value.getUTCDate()).padStart(2, '0');
+    const y = value.getUTCFullYear();
+    return `${m}/${d}/${y}`;
+  }
+  return (value || '').toString().trim();
+}
+
 function parseAMEX(rows, headers) {
   const config = SOURCE_CONFIGS.AMEX;
   const colMap = {};
@@ -98,9 +115,9 @@ function parseDiscover(rows, headers) {
   }
 
   return rows.map(row => {
-    const date = (row[colMap.date] || '').trim();
-    const transaction = (row[colMap.transaction] || '').trim();
-    const upstream_category = (row[colMap.upstream_category] || '').trim();
+    const date = excelDateToString(row[colMap.date]);
+    const transaction = (row[colMap.transaction] || '').toString().trim();
+    const upstream_category = (row[colMap.upstream_category] || '').toString().trim();
     const amount = Math.abs(parseFloat((row[colMap.amount] || '0').toString().replace(/[$,]/g, '')) || 0);
 
     if (!date && !transaction) return null;
@@ -214,15 +231,21 @@ function parseCSV(buffer, filename, userSource) {
     throw new Error(`Unknown source "${userSource}". Valid sources: AMEX, Venmo, Discover, Wells Fargo`);
   }
 
+  if (userSource === 'Discover' && !filename.toLowerCase().endsWith('.csv')) {
+    throw new Error('Discover only supports CSV files. Please export your statement as CSV.');
+  }
+
   const isExcel = filename.toLowerCase().endsWith('.xlsx') || filename.toLowerCase().endsWith('.xls');
 
   // Step 1: Read file into a workbook and worksheet
   let wb, ws;
-  if (isExcel) {
-    wb = XLSX.read(buffer, { type: 'buffer' });
-  } else {
+  const fileHeader = buffer.slice(0, 5).toString('utf8').toLowerCase();
+  const isHtmlDisguisedAsExcel = isExcel && fileHeader.startsWith('<html');
+  if (isHtmlDisguisedAsExcel || !isExcel) {
     const text = buffer.toString('utf8');
     wb = XLSX.read(text, { type: 'string', raw: false });
+  } else {
+    wb = XLSX.read(buffer, { type: 'buffer' });
   }
   ws = wb.Sheets[wb.SheetNames[0]];
 
@@ -235,6 +258,8 @@ function parseCSV(buffer, filename, userSource) {
     ? [] // Positional sources (Wells Fargo) have no named headers
     : Object.keys(config.columnMap).map(col => col.toLowerCase());
 
+  console.log(`Raw rows count: ${rawRows.length}`);
+  console.log(`Search terms for ${userSource}:`, searchTerms);
   let headerRow = 0;
   for (let i = 0; i < rawRows.length; i++) {
     const line = rawRows[i].map(v => (v || '').toString().toLowerCase()).join(',');
@@ -245,7 +270,7 @@ function parseCSV(buffer, filename, userSource) {
       break;
     }
   }
-  // console.log(`Header row found at row ${headerRow + 1}`);
+  console.log(`Header row found at row ${headerRow + 1}`);
 
   // Step 4: Re-parse from the header row so headers become object keys
   const data = XLSX.utils.sheet_to_json(ws, { defval: '', range: headerRow });

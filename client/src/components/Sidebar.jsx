@@ -72,11 +72,13 @@ export default function Sidebar({ stats, onUploaded }) {
   const { names: catNames, groups } = useCategories();
   const isSourceSelected = selectedSource && selectedSource !== '';
 
+  const acceptedExtensions = selectedSource === 'Discover' ? ['.csv'] : ['.csv', '.xlsx'];
+
   async function handleFiles(files) {
     setUploading(true);
     const results = [];
     for (const file of Array.from(files)) {
-      if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) continue;
+      if (!acceptedExtensions.some(ext => file.name.endsWith(ext))) continue;
       try {
         const res = await uploadCSV(file, selectedSource);
         results.push({ name: file.name, source: res.source, count: res.inserted });
@@ -138,7 +140,7 @@ export default function Sidebar({ stats, onUploaded }) {
           onDragLeave={() => setDragOver(false)}
           onDrop={e => isSourceSelected && onDrop(e)}
         >
-          <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls" multiple disabled={!isSourceSelected} style={{ display: 'none' }}
+          <input ref={inputRef} type="file" accept={acceptedExtensions.join(',')} multiple disabled={!isSourceSelected} style={{ display: 'none' }}
             onChange={e => handleFiles(e.target.files)} />
           {uploading
             ? <Spinner size="small" label="Uploading…" />
@@ -147,7 +149,7 @@ export default function Sidebar({ stats, onUploaded }) {
                 <Text className={s.dzText}>{isSourceSelected ? <><strong>Browse</strong> or <strong>Drag & Drop</strong></> : 'Select a source first'}</Text>
                 {isSourceSelected && <>
                   <br />
-                  <Text className={s.dzHint}>AMEX · Venmo · Wells Fargo · Discover</Text>
+                  <Text className={s.dzHint}>Supported File Formats: {acceptedExtensions.join(', ')}</Text>
                 </>}
               </>
           }
