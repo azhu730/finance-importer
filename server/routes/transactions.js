@@ -15,7 +15,7 @@ router.get('/', (req, res) => {
   const params = {};
 
   if (search) {
-    conditions.push('(transaction LIKE @s OR upstream_category LIKE @s OR category LIKE @s OR notes LIKE @s)');
+    conditions.push('("transaction" LIKE @s OR upstream_category LIKE @s OR category LIKE @s OR notes LIKE @s)');
     params.s = `%${search}%`;
   }
   if (source)   { conditions.push('payment = @source');    params.source = source; }
@@ -49,7 +49,7 @@ router.post('/upload', upload.single('file'), (req, res) => {
 
     const insert = db.prepare(`
       INSERT OR IGNORE INTO transactions
-        (id, date, transaction, category, sub_category, amount, payment, upstream_category)
+        (id, date, "transaction", category, sub_category, amount, payment, upstream_category)
       VALUES
         (@id, @date, @transaction, @category, @sub_category, @amount, @payment, @upstream_category)
     `);
@@ -90,7 +90,7 @@ router.patch('/:id', (req, res) => {
   const allowed = ['date', 'transaction', 'category', 'sub_category', 'amount', 'payment', 'notes', 'recurring_sub', 'upstream_category'];
   const fields  = Object.keys(req.body).filter(k => allowed.includes(k));
   if (!fields.length) return res.status(400).json({ error: 'No valid fields provided' });
-  const set = fields.map(k => `${k} = @${k}`).join(', ');
+  const set = fields.map(k => `${k === 'transaction' ? '"transaction"' : k} = @${k}`).join(', ');
   db.prepare(`UPDATE transactions SET ${set} WHERE id = @id`).run({ ...req.body, id: req.params.id });
   res.json({ ok: true });
 });

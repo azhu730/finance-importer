@@ -5,3 +5,25 @@ client/dist/
 *.db
 .env
 .DS_Store
+
+# Database files (SQLite, DB journals, etc.)
+*.sqlite
+*.sqlite3
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Common data/export/upload directories and files
+server/db/*.json
+server/db/*.csv
+server/db/*.sqlite*
+server/exports/
+exports/
+uploads/
+server/uploads/
+data/
+server/data/
+
+# Exports, dumps, and backups
+*.dump
+*.backup
