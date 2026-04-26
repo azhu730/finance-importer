@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Input, Select, Button, Spinner, Text,
   Table, TableHeader, TableHeaderCell, TableBody, TableRow, TableCell,
@@ -132,9 +132,13 @@ function TransactionRow({ row, catGroups, catNames, onPatch }) {
   );
 }
 
-export default function TransactionsTab({ onDataChange }) {
+export default function TransactionsTab({ onDataChange, onRegisterRefresh }) {
   const s = useStyles();
   const { rows, total, page, pages, loading, filters, updateFilter, toggleSort, goToPage, refresh } = useTransactions();
+
+  useEffect(() => {
+    onRegisterRefresh?.(() => goToPage(1));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const { groups: catGroups, names: catNames } = useCategories();
 
   const handlePatch = useCallback(async (id, fields) => {
