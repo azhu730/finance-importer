@@ -102,7 +102,7 @@ function TransactionRow({ row, catGroups, catNames, onPatch }) {
       </TableCell>
       <TableCell>
         <Text size={200} style={{ fontVariantNumeric: 'tabular-nums' }}>
-          ${(+row.amount || 0).toFixed(2)}
+          {(v => (v < 0 ? '-' : '') + '$' + Math.abs(v).toFixed(2))(+row.amount || 0)}
         </Text>
       </TableCell>
       <TableCell>

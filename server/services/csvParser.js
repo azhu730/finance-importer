@@ -56,7 +56,7 @@ function parseAMEX(rows, headers) {
   return rows.map(row => {
     const date = (row[colMap.date] || '').trim();
     const transaction = (row[colMap.transaction] || '').trim();
-    const amount = Math.abs(parseFloat((row[colMap.amount] || '0').toString().replace(/[$,\s]/g, '')) || 0);
+    const amount = parseFloat((row[colMap.amount] || '0').toString().replace(/[$,\s]/g, '')) || 0;
     const upstream_category = (row[colMap.upstream_category] || '').trim();
 
     if (!date && !transaction) return null;
@@ -89,7 +89,7 @@ function parseVenmo(rows, headers) {
     const date = datetime.split(' ')[0];
     const transaction = (row[colMap.transaction] || '').trim();
     const rawAmt = (row[colMap.amount] || '0').toString().replace(/[$,+\s]/g, '');
-    const amount = Math.abs(parseFloat(rawAmt) || 0);
+    const amount = parseFloat(rawAmt) || 0;
 
     if (!date && !transaction) return null;
     return {
