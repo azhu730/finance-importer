@@ -4,6 +4,7 @@ client/node_modules/
 client/dist/
 *.db
 .env
+env
 .DS_Store
 
 # Database files (SQLite, DB journals, etc.)
