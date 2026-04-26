@@ -60,6 +60,7 @@ function parseAMEX(rows, headers) {
     const upstream_category = (row[colMap.upstream_category] || '').trim();
 
     if (!date && !transaction) return null;
+    if (transaction.toUpperCase() === 'MOBILE PAYMENT - THANK YOU') return null;
     return {
       id: generateId(),
       date,
@@ -120,7 +121,12 @@ function parseDiscover(rows, headers) {
     const upstream_category = (row[colMap.upstream_category] || '').toString().trim();
     const amount = Math.abs(parseFloat((row[colMap.amount] || '0').toString().replace(/[$,]/g, '')) || 0);
 
+    const EXCLUDED_DESCRIPTIONS = [
+      'INTERNET PAYMENT - THANK YOU',
+      'CASHBACK BONUS REDEMPTION PYMT/STMT CRDT',
+    ];
     if (!date && !transaction) return null;
+    if (EXCLUDED_DESCRIPTIONS.includes(transaction.toUpperCase())) return null;
     return {
       id: generateId(),
       date,
