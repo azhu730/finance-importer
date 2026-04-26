@@ -9,6 +9,7 @@ import { useTransactions } from '../../hooks/useTransactions.js';
 import { useCategories } from '../../hooks/useCategories.js';
 import { patchTransaction } from '../../api/client.js';
 import SourceBadge from '../shared/SourceBadge.jsx';
+import ExcludedTransactionsModal from '../ExcludedTransactionsModal.jsx';
 
 const useStyles = makeStyles({
   root: { display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' },
@@ -132,8 +133,9 @@ function TransactionRow({ row, catGroups, catNames, onPatch }) {
   );
 }
 
-export default function TransactionsTab({ onDataChange, onRegisterRefresh }) {
+export default function TransactionsTab({ onDataChange, onRegisterRefresh, excludedItems = [], onExcludedInserted }) {
   const s = useStyles();
+  const [showExcluded, setShowExcluded] = useState(false);
   const { rows, total, page, pages, loading, filters, updateFilter, toggleSort, goToPage, refresh } = useTransactions();
 
   useEffect(() => {
@@ -192,6 +194,16 @@ export default function TransactionsTab({ onDataChange, onRegisterRefresh }) {
         </Select>
         <div className={s.spacer} />
         {loading && <Spinner size="extra-small" />}
+        {excludedItems.length > 0 && (
+          <Button
+            size="small"
+            appearance="subtle"
+            style={{ color: tokens.colorPaletteYellowForeground1 }}
+            onClick={() => setShowExcluded(true)}
+          >
+            {excludedItems.length} rows Excluded
+          </Button>
+        )}
         <Text size={100} style={{ color: tokens.colorNeutralForeground3 }}>{total} rows</Text>
       </div>
 
@@ -259,6 +271,14 @@ export default function TransactionsTab({ onDataChange, onRegisterRefresh }) {
           {pgButtons()}
           <button className={s.pgBtn} onClick={() => goToPage(page + 1)} disabled={page === pages}>›</button>
         </div>
+      )}
+
+      {showExcluded && (
+        <ExcludedTransactionsModal
+          items={excludedItems}
+          onDismiss={() => setShowExcluded(false)}
+          onInserted={inserted => { onExcludedInserted?.(inserted); setShowExcluded(false); }}
+        />
       )}
     </div>
   );

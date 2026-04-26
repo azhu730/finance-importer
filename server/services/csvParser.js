@@ -45,7 +45,7 @@ function excelDateToString(value) {
 function parseAMEX(rows, headers) {
   const config = SOURCE_CONFIGS.AMEX;
   const colMap = {};
-  
+
   // Find each required column (case-insensitive)
   for (const [csvCol, fieldName] of Object.entries(config.columnMap)) {
     const found = findColumnCaseInsensitive(headers, csvCol);
@@ -53,25 +53,27 @@ function parseAMEX(rows, headers) {
     colMap[fieldName] = found;  // Maps fieldName -> actual column name in CSV
   }
 
-  return rows.map(row => {
+  const included = [];
+  const excluded = [];
+
+  for (const row of rows) {
     const date = (row[colMap.date] || '').trim();
     const transaction = (row[colMap.transaction] || '').trim();
     const amount = parseFloat((row[colMap.amount] || '0').toString().replace(/[$,\s]/g, '')) || 0;
     const upstream_category = (row[colMap.upstream_category] || '').trim();
 
-    if (!date && !transaction) return null;
-    if (transaction.toUpperCase() === 'MOBILE PAYMENT - THANK YOU') return null;
-    return {
-      id: generateId(),
-      date,
-      transaction,
-      amount,
-      payment: 'AMEX',
-      upstream_category,
-      category: '',
-      sub_category: '',
-    };
-  }).filter(Boolean);
+    if (!date && !transaction) continue;
+
+    const obj = { id: generateId(), date, transaction, amount, payment: 'AMEX', upstream_category, category: '', sub_category: '' };
+
+    if (transaction.toUpperCase() === 'MOBILE PAYMENT - THANK YOU') {
+      excluded.push({ ...obj, reason: 'Payment to AMEX' });
+    } else {
+      included.push(obj);
+    }
+  }
+
+  return { included, excluded };
 }
 
 function parseVenmo(rows, headers) {
@@ -108,36 +110,40 @@ function parseVenmo(rows, headers) {
 function parseDiscover(rows, headers) {
   const config = SOURCE_CONFIGS.Discover;
   const colMap = {};
-  
+
   for (const [csvCol, fieldName] of Object.entries(config.columnMap)) {
     const found = findColumnCaseInsensitive(headers, csvCol);
     if (!found) throw new Error(`Discover format requires column "${csvCol}" but it was not found. Found columns: ${headers.join(', ')}`);
     colMap[fieldName] = found;
   }
 
-  return rows.map(row => {
+  const EXCLUDED_DESCRIPTIONS = {
+    'INTERNET PAYMENT - THANK YOU': 'Payment to Discover',
+    'CASHBACK BONUS REDEMPTION PYMT/STMT CRDT': 'Cashback reward redemption',
+  };
+
+  const included = [];
+  const excluded = [];
+
+  for (const row of rows) {
     const date = excelDateToString(row[colMap.date]);
     const transaction = (row[colMap.transaction] || '').toString().trim();
     const upstream_category = (row[colMap.upstream_category] || '').toString().trim();
     const amount = Math.abs(parseFloat((row[colMap.amount] || '0').toString().replace(/[$,]/g, '')) || 0);
 
-    const EXCLUDED_DESCRIPTIONS = [
-      'INTERNET PAYMENT - THANK YOU',
-      'CASHBACK BONUS REDEMPTION PYMT/STMT CRDT',
-    ];
-    if (!date && !transaction) return null;
-    if (EXCLUDED_DESCRIPTIONS.includes(transaction.toUpperCase())) return null;
-    return {
-      id: generateId(),
-      date,
-      transaction,
-      amount,
-      payment: 'Discover',
-      upstream_category,
-      category: '',
-      sub_category: '',
-    };
-  }).filter(Boolean);
+    if (!date && !transaction) continue;
+
+    const obj = { id: generateId(), date, transaction, amount, payment: 'Discover', upstream_category, category: '', sub_category: '' };
+    const reason = EXCLUDED_DESCRIPTIONS[transaction.toUpperCase()];
+
+    if (reason) {
+      excluded.push({ ...obj, reason });
+    } else {
+      included.push(obj);
+    }
+  }
+
+  return { included, excluded };
 }
 
 function parseWellsFargo(rows, headers) {
@@ -284,19 +290,25 @@ function parseCSV(buffer, filename, userSource) {
   if (!data.length) throw new Error('No data rows found in file');
 
   const headers = Object.keys(data[0]);
-  let rows;
+  let rows, excluded = [];
 
   try {
     switch (userSource) {
-      case 'AMEX':
-        rows = parseAMEX(data, headers);
+      case 'AMEX': {
+        const result = parseAMEX(data, headers);
+        rows = result.included;
+        excluded = result.excluded;
         break;
+      }
       case 'Venmo':
         rows = parseVenmo(data, headers);
         break;
-      case 'Discover':
-        rows = parseDiscover(data, headers);
+      case 'Discover': {
+        const result = parseDiscover(data, headers);
+        rows = result.included;
+        excluded = result.excluded;
         break;
+      }
       case 'Wells Fargo':
         rows = parseWellsFargo(data, headers);
         break;
@@ -307,9 +319,9 @@ function parseCSV(buffer, filename, userSource) {
     throw new Error(`Failed to parse ${userSource} format: ${e.message}`);
   }
 
-  if (!rows.length) throw new Error(`No valid transactions found for ${userSource} format`);
+  if (!rows.length && !excluded.length) throw new Error(`No valid transactions found for ${userSource} format`);
 
-  return { rows, source: userSource };
+  return { rows, excluded, source: userSource };
 }
 
 function generateId() {

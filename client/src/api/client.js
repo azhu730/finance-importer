@@ -52,6 +52,9 @@ export const clearTransactions = () =>
 export const categorizeBatch = (ids = []) =>
   request('/transactions/categorize', { method: 'POST', json: { ids } });
 
+export const insertSelected = (rows) =>
+  request('/transactions/insert-selected', { method: 'POST', json: { rows } });
+
 // ── Earnings ─────────────────────────────────────────────────────────────────
 export const getEarnings = () => request('/earnings');
 

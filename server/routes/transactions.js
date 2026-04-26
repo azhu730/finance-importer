@@ -34,18 +34,22 @@ router.post('/upload', upload.single('file'), (req, res) => {
   try {
     const userSource = req.body.source;
     if (!userSource) return res.status(400).json({ error: 'Source is required' });
-    const { rows, source } = parseCSV(req.file.buffer, req.file.originalname, userSource);
+    const { rows, excluded, source } = parseCSV(req.file.buffer, req.file.originalname, userSource);
 
     // Apply saved mappings
     const mappings = {};
     db.prepare('SELECT upstream_key, category, sub_category FROM category_mappings').all()
       .forEach(m => { mappings[m.upstream_key] = { category: m.category, subCategory: m.sub_category }; });
 
-    const withMappings = rows.map(r => {
-      const key     = (r.upstream_category || '').toLowerCase().trim();
-      const mapping = mappings[key];
-      return mapping ? { ...r, category: mapping.category, sub_category: mapping.subCategory } : r;
-    });
+    function applyMappings(list) {
+      return list.map(r => {
+        const key     = (r.upstream_category || '').toLowerCase().trim();
+        const mapping = mappings[key];
+        return mapping ? { ...r, category: mapping.category, sub_category: mapping.subCategory } : r;
+      });
+    }
+
+    const withMappings = applyMappings(rows);
 
     const insert = db.prepare(`
       INSERT OR IGNORE INTO transactions
@@ -55,7 +59,28 @@ router.post('/upload', upload.single('file'), (req, res) => {
     `);
     db.transaction(() => withMappings.forEach(r => insert.run(r)))();
 
-    res.json({ inserted: withMappings.length, source });
+    res.json({ inserted: withMappings.length, source, excluded: applyMappings(excluded) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/transactions/insert-selected — add back user-selected excluded rows
+router.post('/insert-selected', (req, res) => {
+  try {
+    const { rows = [] } = req.body;
+    if (!rows.length) return res.json({ inserted: 0 });
+
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO transactions
+        (id, date, "transaction", category, sub_category, amount, payment, upstream_category)
+      VALUES
+        (@id, @date, @transaction, @category, @sub_category, @amount, @payment, @upstream_category)
+    `);
+    db.transaction(() => rows.forEach(r => insert.run(r)))();
+
+    res.json({ inserted: rows.length });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: e.message });

@@ -62,7 +62,7 @@ const useStyles = makeStyles({
 
 const SOURCE_OPTIONS = ['AMEX', 'Venmo', 'Discover', 'Wells Fargo'];
 
-export default function Sidebar({ stats, onUploaded }) {
+export default function Sidebar({ stats, onUploaded, onExcluded, onExcludedClear, onExcludedRemoveFile }) {
   const s = useStyles();
   const inputRef = useRef(null);
   const [dragOver, setDragOver]     = useState(false);
@@ -77,11 +77,13 @@ export default function Sidebar({ stats, onUploaded }) {
   async function handleFiles(files) {
     setUploading(true);
     const results = [];
+    const allExcluded = [];
     for (const file of Array.from(files)) {
       if (!acceptedExtensions.some(ext => file.name.endsWith(ext))) continue;
       try {
         const res = await uploadCSV(file, selectedSource);
         results.push({ name: file.name, source: res.source, count: res.inserted });
+        if (res.excluded?.length) allExcluded.push(...res.excluded.map(item => ({ ...item, _filename: file.name })));
       } catch (e) {
         alert(`Error uploading ${file.name}: ${e.message}`);
       }
@@ -89,6 +91,7 @@ export default function Sidebar({ stats, onUploaded }) {
     setUploadedFiles(prev => [...prev, ...results]);
     setUploading(false);
     onUploaded();
+    if (allExcluded.length) onExcluded?.(allExcluded);
   }
 
   function onDrop(e) {
@@ -102,10 +105,13 @@ export default function Sidebar({ stats, onUploaded }) {
     await clearTransactions();
     setUploadedFiles([]);
     onUploaded();
+    onExcludedClear?.();
   }
 
   function removeFileChip(i) {
+    const removed = uploadedFiles[i];
     setUploadedFiles(prev => prev.filter((_, idx) => idx !== i));
+    onExcludedRemoveFile?.(removed.name);
   }
 
   const spend = stats?.totalSpend
