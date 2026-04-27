@@ -115,7 +115,7 @@ export default function Sidebar({ stats, onUploaded, onExcluded, onExcludedClear
   }
 
   const spend = stats?.totalSpend
-    ? '$' + stats.totalSpend.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    ? (stats.totalSpend < 0 ? '-' : '') + '$' + Math.abs(stats.totalSpend).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : '$0.00';
 
   return (

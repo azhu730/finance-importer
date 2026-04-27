@@ -129,7 +129,7 @@ function parseDiscover(rows, headers) {
     const date = excelDateToString(row[colMap.date]);
     const transaction = (row[colMap.transaction] || '').toString().trim();
     const upstream_category = (row[colMap.upstream_category] || '').toString().trim();
-    const amount = Math.abs(parseFloat((row[colMap.amount] || '0').toString().replace(/[$,]/g, '')) || 0);
+    const amount = parseFloat((row[colMap.amount] || '0').toString().replace(/[$,]/g, '')) || 0;
 
     if (!date && !transaction) continue;
 
@@ -157,7 +157,7 @@ function parseWellsFargo(rows, headers) {
     // Use column positions: 0=date, 1=amount, 4=transaction
     // Ignores columns at positions 2, 3, and any beyond 4
     const date = (row[headers[0]] || row.Date || '').trim();
-    const amount = Math.abs(parseFloat((row[headers[1]] || row.Amount || '0').toString().replace(/[$,]/g, '')) || 0);
+    const amount = parseFloat((row[headers[1]] || row.Amount || '0').toString().replace(/[$,]/g, '')) || 0;
     const transaction = (row[headers[4]] || row[headers[2]] || row.Description || '').trim();
 
     if (!date && !transaction) return null;
@@ -183,7 +183,7 @@ function normalizeRow(raw, source) {
     case 'AMEX':
       date             = raw['Date'] || raw['date'] || '';
       description      = raw['Description'] || raw['description'] || '';
-      amount           = Math.abs(parseFloat((raw['Amount'] || '0').toString().replace(/[$,\s]/g, '')) || 0);
+      amount           = parseFloat((raw['Amount'] || '0').toString().replace(/[$,\s]/g, '')) || 0;
       upstreamCategory = raw['Category'] || raw['category'] || '';
       break;
 
@@ -194,7 +194,7 @@ function normalizeRow(raw, source) {
       description      = raw['Note'] || '';
       upstreamCategory = (raw['Type'] || '').toLowerCase();
       const rawAmt     = (raw['Amount (total)'] || raw['Amount'] || '0').toString().replace(/[$,+\s]/g, '');
-      amount           = Math.abs(parseFloat(rawAmt) || 0);
+      amount           = parseFloat(rawAmt) || 0;
       break;
     }
 
@@ -202,12 +202,12 @@ function normalizeRow(raw, source) {
       date             = raw['Trans. Date'] || raw['Trans Date'] || raw['Date'] || '';
       description      = raw['Description'] || raw['description'] || '';
       upstreamCategory = raw['Category'] || raw['category'] || '';
-      amount           = Math.abs(parseFloat((raw['Amount'] || '0').toString().replace(/[$,]/g, '')) || 0);
+      amount           = parseFloat((raw['Amount'] || '0').toString().replace(/[$,]/g, '')) || 0;
       break;
 
     case 'Wells Fargo':
       date        = raw[keys[0]] || raw['Date'] || '';
-      amount      = Math.abs(parseFloat((raw[keys[1]] || raw['Amount'] || '0').toString().replace(/[$,]/g, '')) || 0);
+      amount      = parseFloat((raw[keys[1]] || raw['Amount'] || '0').toString().replace(/[$,]/g, '')) || 0;
       description = raw[keys[4]] || raw[keys[2]] || raw['Description'] || '';
       break;
 
@@ -218,7 +218,7 @@ function normalizeRow(raw, source) {
       const ck = keys.find(k => /categ/i.test(k));
       date             = raw[dk] || '';
       description      = raw[tk] || '';
-      amount           = Math.abs(parseFloat((raw[ak] || '0').toString().replace(/[$,]/g, '')) || 0);
+      amount           = parseFloat((raw[ak] || '0').toString().replace(/[$,]/g, '')) || 0;
       upstreamCategory = ck ? (raw[ck] || '') : '';
     }
   }
