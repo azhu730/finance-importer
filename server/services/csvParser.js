@@ -79,32 +79,46 @@ function parseAMEX(rows, headers) {
 function parseVenmo(rows, headers) {
   const config = SOURCE_CONFIGS.Venmo;
   const colMap = {};
-  
+
   for (const [csvCol, fieldName] of Object.entries(config.columnMap)) {
     const found = findColumnCaseInsensitive(headers, csvCol);
     if (!found) throw new Error(`Venmo format requires column "${csvCol}" but it was not found. Found columns: ${headers.join(', ')}`);
     colMap[fieldName] = found;
   }
 
-  return rows.map(row => {
+  const typeCol = findColumnCaseInsensitive(headers, 'Type');
+  const included = [], excluded = [];
+
+  for (const row of rows) {
     const datetime = row[colMap.date] || '';
     const date = datetime.split(' ')[0];
     const transaction = (row[colMap.transaction] || '').trim();
-    const rawAmt = (row[colMap.amount] || '0').toString().replace(/[$,+\s]/g, '');
-    const amount = parseFloat(rawAmt) || 0;
 
-    if (!date && !transaction) return null;
-    return {
+    if (!date && !transaction) continue;
+
+    const type = typeCol ? (row[typeCol] || '') : '';
+    const rawAmt = (row[colMap.amount] || '0').toString().replace(/[$,+\s]/g, '');
+    const amount = -(parseFloat(rawAmt) || 0);
+
+    const obj = {
       id: generateId(),
       date: date.trim(),
       transaction,
       amount,
       payment: 'Venmo',
-      upstream_category: '',  // Always blank for Venmo
+      upstream_category: '',
       category: '',
       sub_category: '',
     };
-  }).filter(Boolean);
+
+    if (type.toLowerCase().includes('transfer')) {
+      excluded.push({ ...obj, reason: 'Venmo balance transfer' });
+    } else {
+      included.push(obj);
+    }
+  }
+
+  return { included, excluded };
 }
 
 function parseDiscover(rows, headers) {
@@ -300,9 +314,12 @@ function parseCSV(buffer, filename, userSource) {
         excluded = result.excluded;
         break;
       }
-      case 'Venmo':
-        rows = parseVenmo(data, headers);
+      case 'Venmo': {
+        const result = parseVenmo(data, headers);
+        rows = result.included;
+        excluded = result.excluded;
         break;
+      }
       case 'Discover': {
         const result = parseDiscover(data, headers);
         rows = result.included;
