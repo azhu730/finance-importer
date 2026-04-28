@@ -167,25 +167,27 @@ function parseWellsFargo(rows, headers) {
     throw new Error(`Wells Fargo format expects at least 5 columns (Date, Amount, Description, ..., Description), but got ${headers.length}: ${headers.join(', ')}`);
   }
 
-  return rows.map(row => {
-    // Use column positions: 0=date, 1=amount, 4=transaction
-    // Ignores columns at positions 2, 3, and any beyond 4
-    const date = (row[headers[0]] || row.Date || '').trim();
-    const amount = parseFloat((row[headers[1]] || row.Amount || '0').toString().replace(/[$,]/g, '')) || 0;
-    const transaction = (row[headers[4]] || row[headers[2]] || row.Description || '').trim();
+  const EXCLUDED_PREFIXES = ['VENMO CASHOUT', 'VENMO PAYMENT', 'ONLINE TRANSFER', 'GUSTO PAY'];
+  const included = [], excluded = [];
 
-    if (!date && !transaction) return null;
-    return {
-      id: generateId(),
-      date,
-      transaction,
-      amount,
-      payment: 'Wells Fargo',
-      upstream_category: '',
-      category: '',
-      sub_category: '',
-    };
-  }).filter(Boolean);
+  for (const row of rows) {
+    const date = excelDateToString(row[headers[0]] || row.Date || '');
+    const amount = -(parseFloat((row[headers[1]] || row.Amount || '0').toString().replace(/[$,]/g, '')) || 0);
+    const transaction = (row[headers[4]] || row[headers[2]] || row.Description || '').toString().trim();
+
+    if (!date && !transaction) continue;
+
+    const obj = { id: generateId(), date, transaction, amount, payment: 'Wells Fargo', upstream_category: '', category: '', sub_category: '' };
+    const matchedPrefix = EXCLUDED_PREFIXES.find(p => transaction.toUpperCase().startsWith(p));
+
+    if (matchedPrefix) {
+      excluded.push({ ...obj, reason: matchedPrefix });
+    } else {
+      included.push(obj);
+    }
+  }
+
+  return { included, excluded };
 }
 
 function normalizeRow(raw, source) {
@@ -326,9 +328,12 @@ function parseCSV(buffer, filename, userSource) {
         excluded = result.excluded;
         break;
       }
-      case 'Wells Fargo':
-        rows = parseWellsFargo(data, headers);
+      case 'Wells Fargo': {
+        const result = parseWellsFargo(data, headers);
+        rows = result.included;
+        excluded = result.excluded;
         break;
+      }
       default:
         throw new Error(`Unsupported source: ${userSource}`);
     }
